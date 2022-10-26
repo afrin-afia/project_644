@@ -18,9 +18,7 @@ from torchsummary import summary
 
 
 # Get cpu or gpu device for training.
-# DEVICE = "cuda:0" if torch.cuda.is_available() else "cpu"
-# DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-DEVICE = torch.device("cpu")
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using {DEVICE} device")
 
 NUM_CLIENTS = 10
@@ -71,6 +69,7 @@ def load_datasets():
 train_loaders, val_loaders, test_loader = load_datasets()
 
 def train(net, train_loader, epochs: int, verbose=False):
+    DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     criterion = torch.nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(net.parameters(), lr=0.001)
     net.train()
@@ -94,6 +93,7 @@ def train(net, train_loader, epochs: int, verbose=False):
             print(f"Epoch {epoch+1} | Loss: {epoch_loss:.4f} | Acc: {epoch_acc:.4f}")   
 
 def test(net, test_loader):
+    DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     criterion = torch.nn.CrossEntropyLoss()
     correct, total, loss = 0, 0, 0.0
     net.eval()
@@ -258,7 +258,7 @@ class FlowerClient(fl.client.NumPyClient):
     
     def fit(self, parameters, config):
         set_parameters(self.net, parameters)
-        train(self.net, self.train_loader, epochs=5)
+        train(self.net, self.train_loader, epochs=10)
         return get_parameters(self.net), len(self.train_loader), {}
 
     def evaluate(self, parameters, config):
@@ -267,6 +267,7 @@ class FlowerClient(fl.client.NumPyClient):
         return float(loss), len(self.val_loader), {"accuracy": float(accuracy)}
 
 def client_fn(cid: str) -> FlowerClient:
+    DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     net = modelA().to(DEVICE)
     return FlowerClient(net, train_loaders[int(cid)], val_loaders[int(cid)])
 
@@ -290,7 +291,7 @@ stragegy = fl.server.strategy.FedAvg(
 fl.simulation.start_simulation(
     client_fn=client_fn,
     num_clients=NUM_CLIENTS,
-    config=fl.server.ServerConfig(num_rounds=10),
+    config=fl.server.ServerConfig(num_rounds=40),
     strategy=stragegy
 )
 
