@@ -20,7 +20,6 @@ def maxmin_r(y):
     return np.max(y)/np.min(y)
 
 def find_root(f,N,p,param, debug=False):
-    
     # Newton's method
     ep = 0.0001
     tol = 0.000001
@@ -99,8 +98,64 @@ def unbal_param(N=10, p=0.5, param='dom_prop', distr='zipf', debug=False):
     if s > 25:
         print("Distr warning: s > 25 may cause numerical instability!!!")
     return s
-    
 
+def get_distr(N, s, distr='zipf'):
+    if distr == 'zipf':
+        f = zipf
+    elif distr == 'bu':
+        f = bu
+    x = np.array(list(range(N)))
+    p = np.array([f(i+1, N, s) for i in x])
+    return p
+
+def unbal_split(D, N, p, param="dom_prop", distr="zipf", shuffle=False, np_generator=np.random.default_rng()):
+    '''
+    Returns the dataset D into N unbalanced partitions such that the parameter param at each partition has the value of p.
+    - D: Dataset
+    - N: Number of partitions. Has to equal the number of classes in the dataset
+
+    param (default 'dom_prop'):
+    - param='s' : the skweness parameter of the distribution. It is not very meaningful by itself
+    - param='coef_var': the coefficient of variation of the resulting distribution. coef_var = std(y) / mean(y)
+    - param='maxmin_r': the ratio of the dominant class to the minoryty class. maxmin_r = max(y) / min(y)
+    - param='dom_prop': the proportion of the dominant class. dom_prop = y[0]
+
+    distr (default='zipf')
+    - distr='zipf': Uses Zipf's law as the distribution, a discrete finite power law.
+    - distr='bu': Uses a Bernoulli-Uniform distribution. There is a dominant class and all the others are equal.
+
+    - shuffle: Shuffle the entries of the dataset
+    - np_generator: Random number generator for numpy 
+    '''
+
+    M = D.shape[0]
+    
+    if shuffle:
+        D = np_generator.permutation(D)
+    # Don't separate x and y
+    s = unbal_param(N, p, param=param, distr=distr)
+    p = get_distr(N, s, distr=distr)
+    
+    # Shift distribution for every client
+    P = np.array([np.roll(p, i) for i in range(N)])
+    
+    # Cummulatively get the indices
+    Q = (P* M/N).round(0).cumsum(axis = 0) .astype(int)
+    
+    #D = train_d
+    Dc = []
+
+    for i in range(N):
+        Di = np.array([])
+        for j in range(N):
+            start = 0 if i == 0 else Q[i-1, j]
+            end = Q[i,j]
+            # Assuming that the label is the last column
+            idx = np.where(D[:,-1] == j)[0][start:end]
+            Di = np.vstack((Di, D[idx])) if Di.size else D[idx]
+        Dc.append(Di)
+    # Return dataset
+    return Dc
 
 if __name__ == "__main__":
     print("Hello world")
