@@ -291,7 +291,7 @@ stragegy = fl.server.strategy.FedAvg(
 fl.simulation.start_simulation(
     client_fn=client_fn,
     num_clients=NUM_CLIENTS,
-    config=fl.server.ServerConfig(num_rounds=40),
+    config=fl.server.ServerConfig(num_rounds=10),
     strategy=stragegy
 )
 
