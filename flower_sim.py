@@ -51,7 +51,7 @@ def load_datasets():
     partition_size = len(training_data) // NUM_CLIENTS
     lengths = [partition_size] * NUM_CLIENTS
 
-    # datasets = unbal_split(training_data, lengths, p=0.6, generator=torch.Generator().manual_seed(43))
+    # datasets = unbal_split(training_data, lengths, p=0.6, generator=torch.Generator().manual_seed(42))
     datasets = random_split(training_data, lengths, generator=torch.Generator().manual_seed(42))
 
     # Split each partition into train.val and create DataLoader
