@@ -1,6 +1,11 @@
 import configparser
 import numpy as np
 import math
+import warnings
+
+# For torch
+from torch.utils.data import Subset
+from torch import default_generator, randperm
 
 def zipf(k, N, s):
     H = sum(1/i**s for i in range(1, N+1))
@@ -108,7 +113,27 @@ def get_distr(N, s, distr='zipf'):
     p = np.array([f(i+1, N, s) for i in x])
     return p
 
-def unbal_split(D, N, p, param="dom_prop", distr="zipf", shuffle=False, np_generator=np.random.default_rng()):
+def get_Pint(P, M, N):
+    Pint = (P*M/N).round(0)
+    length = M //N
+    flag = True
+    # Add or substract 1 until all clients have the same partition size
+    while True:
+        PsumCol = Pint.sum(axis=0)
+        flag = True
+        for j, sumCol in enumerate(PsumCol):
+            if sumCol != length:
+                i = np.argmax(Pint[:,j])
+                flag = False
+                if sumCol < length:
+                    Pint[i,j] += 1
+                if sumCol > length:
+                    Pint[i,j] -= 1
+        if flag:
+            break
+    return Pint
+
+def np_unbal_split(D, N, p, param="dom_prop", distr="zipf", shuffle=False, np_generator=np.random.default_rng()):
     '''
     Returns the dataset D into N unbalanced partitions such that the parameter param at each partition has the value of p.
     - D: Dataset
@@ -138,9 +163,10 @@ def unbal_split(D, N, p, param="dom_prop", distr="zipf", shuffle=False, np_gener
     
     # Shift distribution for every client
     P = np.array([np.roll(p, i) for i in range(N)])
+    Pint = get_Pint(P, M, N)
     
     # Cummulatively get the indices
-    Q = (P* M/N).round(0).cumsum(axis = 0) .astype(int)
+    Q = Pint.cumsum(axis = 0) .astype(int)
     
     #D = train_d
     Dc = []
@@ -156,6 +182,112 @@ def unbal_split(D, N, p, param="dom_prop", distr="zipf", shuffle=False, np_gener
         Dc.append(Di)
     # Return dataset
     return Dc
+
+def unbal_idx(L, N, p, param="dom_prop", distr="zipf", shuffle=True, generator=default_generator, debug=False):
+    # Labels are in final order
+    # Can either be shifted or not
+    M = len(L)
+    s = unbal_param(N, p, param=param, distr=distr)
+    p = get_distr(N, s, distr=distr)
+    
+    # Shift distribution for every client
+    P = np.array([np.roll(p, i) for i in range(N)])
+    
+    Pint = get_Pint(P, M, N)
+    #Cummulatively get the indices
+    Q = Pint.cumsum(axis = 0).astype(int)
+    
+    if debug:
+        print("\nP=")
+        print(P)
+        print("\nPint=")
+        print(Pint)
+        print("\nSum Pcols=")
+        print(Pint.sum(axis=0, keepdims=True))
+        print("\nSum Prows=")
+        print(Pint.sum(axis=1, keepdims=True))
+        print("\nQ=")
+        print(Q)
+    
+    
+    Idata = [np.where(L == j)[0].astype(int) for j in range(N)]
+    
+    if shuffle:
+        for i, Idatai in enumerate(Idata):
+            idx_idi = randperm(len(Idatai), generator=generator).tolist()
+            Idata[i] = Idatai[idx_idi]
+    
+    Ic = []
+    for i in range(N):
+        Ii = []
+        for j in range(N):
+            start = 0 if i == 0 else Q[i-1, j]
+            end = Q[i, j]
+            idx = Idata[j][start:end]
+            Ii += list(idx)
+        Ic.append(Ii)
+    return Ic
+
+
+def unbal_split(D, lengths, generator=default_generator, shuffle=True, train=True, p=0.8, param="dom_prop", distr="zipf", debug=False):
+    '''
+    D: Pytorch dataset
+    
+    lengths: length of the partition for each individual client
+    ATTENTION: len(lengths) must equal Num Clients AND Num Clients must equal the number of unique classes AND every element of lengths must be the same
+
+    p: Value of the param
+
+    param (default 'dom_prop'): The parameter that characterizes the distribution of classes in each client
+    - param='s' : the skweness parameter of the distribution. It is not very meaningful by itself
+    - param='coef_var': the coefficient of variation of the resulting distribution. coef_var = std(y) / mean(y)
+    - param='maxmin_r': the ratio of the dominant class to the minoryty class. maxmin_r = max(y) / min(y)
+    - param='dom_prop': the proportion of the dominant class. dom_prop = y[0]
+
+    distr (default='zipf')
+    - distr='zipf': Uses Zipf's law as the distribution, a discrete finite power law.
+    - distr='bu': Uses a Bernoulli-Uniform distribution. There is a dominant class and all the others are equal.
+
+    - shuffle: Shuffle the entries of the dataset (default=True)
+    - train: Looks at train examples (default=True)
+    - generator: Pytorch random number generator (default=default_generator)
+    - debug: Print debugging output (default=False)
+
+    # Based on Pytorch's random_split()
+    # https://github.com/pytorch/pytorch/blob/master/torch/utils/data/dataset.py
+    '''
+    
+    M = sum(lengths)
+    N = len(lengths)
+    
+    if any(l != lengths[0] for l in lengths):
+        raise Exception("Every element of lengths must be same")
+        
+    if train:
+        np_labels = D.train_labels.cpu().detach().numpy()
+    else:
+        np_labels = D.test_labels.cpu().detach().numpy()
+        
+    nunique = len(np.unique(np_labels))
+    
+    if nunique != N:
+        raise Exception("Number of classes must be same as number of clients")
+    
+    Ic = unbal_idx(np_labels, N, p=p, param=param,\
+                   distr=distr, shuffle=shuffle, generator=generator, debug=debug)
+    if debug:
+        print("\nClient class proportions: ")
+        for i, Ii in enumerate(Ic):
+            lunique, lcounts = np.unique(np_labels[Ii], return_counts = True)
+            lcountsn = np.divide(lcounts, lcounts.sum())
+            print(i, ":", lcountsn, "=", lcounts.sum())
+            
+    lengthsI = [len(Ii) for Ii in Ic]
+    sumLensI = sum(lengthsI)
+    if sumLensI != M:
+        warnings.warn(f"Partitions sum to {sumLensI} and do not cover the complete dataset of {M} "
+                  "due to rounding errors. Consider a bigger dataset.")
+    return [Subset(D, Ii) for Ii in Ic]
 
 if __name__ == "__main__":
     print("Hello world")
