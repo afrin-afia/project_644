@@ -114,7 +114,9 @@ def get_distr(N, s, distr='zipf'):
     return p
 
 def get_Pint(P, M, N):
-    Pint = (P*M/N).round(0)
+    Pflt = (P*M/N)
+    Pint = Pflt.round(0)
+    #print("\npre_Pint=\n", Pint)
     length = M //N
     flag = True
     # Add or substract 1 until all clients have the same partition size
@@ -123,11 +125,12 @@ def get_Pint(P, M, N):
         flag = True
         for j, sumCol in enumerate(PsumCol):
             if sumCol != length:
-                i = np.argmax(Pint[:,j])
                 flag = False
                 if sumCol < length:
+                    i = np.argmax(Pflt[:,j] - Pint[:,j])
                     Pint[i,j] += 1
                 if sumCol > length:
+                    i = np.argmin(Pflt[:,j] - Pint[:,j])
                     Pint[i,j] -= 1
         if flag:
             break
@@ -163,10 +166,14 @@ def np_unbal_split(D, N, p, param="dom_prop", distr="zipf", shuffle=False, np_ge
     
     # Shift distribution for every client
     P = np.array([np.roll(p, i) for i in range(N)])
+
     Pint = get_Pint(P, M, N)
     
     # Cummulatively get the indices
     Q = Pint.cumsum(axis = 0) .astype(int)
+    #print("\nP=\n", P)
+    #print("\nPint=\n", Pint)
+    #print("\nQ=\n", Q)
     
     #D = train_d
     Dc = []
