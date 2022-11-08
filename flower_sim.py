@@ -16,7 +16,7 @@ from torchvision.transforms import ToTensor
 from torchsummary import summary
 
 # User defined functions
-from utils.partition import * 
+from utils.partition import unbal_split
 
 
 # Get cpu or gpu device for training.
