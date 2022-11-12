@@ -5,15 +5,12 @@ import flwr as fl
 import numpy as np 
 import matplotlib.pyplot as plt
 import torch
-import torch.nn as nn
-import torchvision
-import torch.nn.functional as F
 import torchvision.transforms as transforms
 from torchvision.datasets import FashionMNIST 
 from flwr.common import Metrics
 from torch.utils.data import DataLoader, random_split
-from torchvision.transforms import ToTensor
-from torchsummary import summary
+
+from utils.mnist_models import modelA
 
 # User defined functions
 from utils.partition import unbal_split
@@ -27,16 +24,14 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using {DEVICE} device")
 
 NUM_CLIENTS = 10
-
 BATCH_SIZE = 64
 
-MAL_CLIENTS_INDICES= [3]            #allowed values: [0 to NUM_CLIENTS-1]
+MAL_CLIENTS_INDICES= []            #allowed values: [0 to NUM_CLIENTS-1]
 R= 100        # #missclassification
 NUM_CLASSES= 10     #for fashionMNIST #classes= 10
 NUM_FL_ROUNDS= 2
-NUM_TRAIN_EPOCH= 5
-POISONING_ALGO= 2   #0: no poison (ALSO CHANGE MAL_CLIENT_INDICES to blank list), 1: targeted model poisoning, 2: alternating minimization
-
+NUM_TRAIN_EPOCH= 1
+POISONING_ALGO=0   #0: no poison (ALSO CHANGE MAL_CLIENT_INDICES to blank list), 1: targeted model poisoning, 2: alternating minimization
 
 def change_labels(labels, r_count):
     #change r_count labels from labels
@@ -150,7 +145,6 @@ def train_malicious_agent_targeted_poisoning(net, train_loader, epochs: int, ver
             print(f"Malicious agent(targeted poisoning), epoch {epoch+1} | Loss: {epoch_loss:.4f} | Acc: {epoch_acc:.4f}") 
     
 def train_malicious_agent_alternating_minimization(net, train_loader, epochs: int, global_params, verbose=False):
-    
     my_previous_params= get_parameters(net)
     images_list= []
     labels_list= []
@@ -258,7 +252,8 @@ def train(cid, net, train_loader, epochs: int, verbose=False, global_params= Non
         epoch_acc = correct / total
 
         if verbose:
-            print(f"Epoch {epoch+1} | Loss: {epoch_loss:.4f} | Acc: {epoch_acc:.4f}")   
+            print(f"Epoch {epoch+1} | Loss: {epoch_loss:.4f} | Acc: {epoch_acc:.4f}")
+           
 
 def test(net, test_loader):
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -290,133 +285,6 @@ def test_single_data(net, data):
         _, predicted = torch.max(output.data,1)
         
     return predicted 
-
-def modelA():
-    model = nn.Sequential(
-        nn.Conv2d(1,64,(5,5), padding='valid'),
-        nn.ReLU(),
-        nn.Conv2d(64,64,(5,5)),
-        nn.ReLU(),
-        nn.Dropout2d(0.25),
-        nn.Flatten(),
-        nn.Linear(25600,128),
-        nn.ReLU(),
-        nn.Dropout(0.5),
-        nn.Linear(128,10),
-    )
-    return model
-
-def modelB():
-    model = nn.Sequential(
-        nn.Dropout2d(0.2),
-        nn.Conv2d(1,64,(8,8), padding=(3,3), stride=(2,2)),
-        nn.ReLU(),
-        nn.Conv2d(64,128,(6,6), padding='valid', stride=(2,2)),
-        nn.ReLU(),
-        nn.Conv2d(128,128,(5,5), stride=(1,1)),
-        nn.ReLU(),
-        nn.Dropout2d(0.5),
-        nn.Flatten(),
-        nn.Linear(128,10),
-    )
-    return model
-
-def modelC():
-    model = nn.Sequential(
-        nn.Conv2d(1,128,(3,3), padding='valid'),
-        nn.ReLU(),
-        nn.Conv2d(128,64,(3,3)),
-        nn.ReLU(),
-        nn.Dropout2d(0.25),
-        nn.Flatten(),
-        nn.Linear(36864,128),
-        nn.ReLU(),
-        nn.Dropout(0.5),
-        nn.Linear(128,10)
-    )
-    return model
-
-def modelD():
-    model = nn.Sequential(
-        nn.Flatten(),
-        nn.Linear(784, 300),
-        nn.ReLU(),
-        nn.Dropout(0.5),
-        nn.Linear(300, 300),
-        nn.ReLU(),
-        nn.Dropout(0.5),
-        nn.Linear(300, 300),
-        nn.ReLU(),
-        nn.Dropout(0.5),
-        nn.Linear(300, 300),
-        nn.ReLU(),
-        nn.Dropout(0.5),
-        nn.Linear(300, 10),
-    )
-
-    return model
-
-def modelE():
-    model = nn.Sequential(
-        nn.Flatten(),
-        nn.Linear(784, 100),
-        nn.ReLU(),
-        nn.Linear(100, 100),
-        nn.ReLU(),
-        nn.Linear(100, 10),
-    )
-
-    return model
-
-def modelF():
-    model = nn.Sequential(
-        nn.Conv2d(1, 32, (5,5,), padding='valid'),
-        nn.ReLU(),
-        nn.MaxPool2d((2,2)),
-        nn.Conv2d(32, 64, (5,5)),
-        nn.ReLU(),
-        nn.MaxPool2d((2,2)),
-        nn.Flatten(),
-        nn.Linear(1024, 512),
-        nn.ReLU(),
-        nn.Linear(512, 10),
-    )
-
-    return model
-
-def modelG():
-    model = nn.Sequential(
-        nn.Conv2d(1, 32, (5,5), padding='same'),
-        nn.ReLU(),
-        nn.Conv2d(32, 32, (5,5), padding='same'),
-        nn.ReLU(),
-        nn.MaxPool2d((2,2)),
-        nn.Dropout2d(0.25),
-        nn.Conv2d(32, 64, (3,3), padding='same'),
-        nn.ReLU(),
-        nn.Conv2d(64, 64, (3,3), padding='same'),
-        nn.ReLU(),
-        nn.MaxPool2d((2,2), stride=(2,2)),
-        nn.Dropout2d(0.25),
-        nn.Flatten(),
-        nn.Linear(3136, 512),
-        nn.ReLU(),
-        nn.BatchNorm1d(512),
-        nn.Dropout(0.5),
-        nn.Linear(512, 10)
-    )
-
-    return model
-
-def ModelLR():
-    model = nn.Sequential(
-        nn.Flatten(),
-        nn.Linear(784, 10),
-    )
-
-    return model
-
-
 
 def get_parameters(net) -> List[np.ndarray]:
     """Get model parameters as a list of NumPy ndarrays."""
@@ -451,6 +319,7 @@ class FlowerClient(fl.client.NumPyClient):
 
         else:               #benign agent
             train(self.cid, self.net, self.train_loader, epochs=NUM_TRAIN_EPOCH)
+
         return get_parameters(self.net), len(self.train_loader), {}
 
         
@@ -490,22 +359,37 @@ def evaluate(server_round: int, parameters: fl.common.NDArrays, config):
         print(f"true, malicious, and predicted labels= {true_label}, {mal_label}, {predicted_label}")
     return loss, {"accuracy": accuracy}
 
-
+# This is the aggregration strategy that we are using for our experiments
+# We are sampling from all clients and evaluating the model on all their evaluation data
 stragegy = fl.server.strategy.FedAvg(
     fraction_fit=1.0,  # Sample 100% of available clients for training
-    fraction_evaluate=0.5,  # Sample 50% of available clients for evaluation
+    fraction_evaluate=1.0,  # Sample 100% of available clients for evaluation
     min_fit_clients=10,  # Never sample less than 10 clients for training
-    min_evaluate_clients=5,  # Never sample less than 5 clients for evaluation
+    min_evaluate_clients=10,  # Never sample less than 5 clients for evaluation
     min_available_clients=10,  # Wait until all 10 clients are available
     evaluate_metrics_aggregation_fn=weighted_average,  # Custom aggregation function
 )
-
-fl.simulation.start_simulation(
+# Set the number of cpus for how many ray instance you want to have running or being at idle
+ray_init_args = {
+    "include_dashboard": True,
+    "num_cpus": 6,
+}
+# Set the number of gpus to be (num of gpus) / (number of running instances) 
+client_resources = {
+    "num_gpus": 0.2,
+}
+# This will start the simulations
+hist = fl.simulation.start_simulation(
     client_fn=client_fn,
     num_clients=NUM_CLIENTS,
-    config=fl.server.ServerConfig(num_rounds=10),
-    strategy=stragegy
+    config=fl.server.ServerConfig(num_rounds=NUM_FL_ROUNDS),
+    strategy=stragegy,
+    ray_init_args=ray_init_args,
+    client_resources=client_resources,
 )
+
+for acc in hist.metrics_distributed['accuracy']:
+    print(acc)
 
 #testnet= torch.load('models/model_with_algo_1.pth')
 #data= torch.load("poisoned_sample.pt")
