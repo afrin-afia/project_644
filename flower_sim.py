@@ -14,6 +14,7 @@ from utils.mnist_models import modelA
 
 # User defined functions
 from utils.partition import unbal_split
+
 #NO poisoning: MAL_CLIENTS_INDICES= [], POISONING_ALGO= 0
 #Targeted model poisoning: MAL_CLIENTS_INDICES= [<<mal. indices>>], POISONING_ALGO= 1
 #Alternating minimization: MAL_CLIENTS_INDICES= [<<mal. indices>>], POISONING_ALGO= 2
@@ -26,12 +27,13 @@ print(f"Using {DEVICE} device")
 NUM_CLIENTS = 10
 BATCH_SIZE = 64
 
-MAL_CLIENTS_INDICES= []            #allowed values: [0 to NUM_CLIENTS-1]
-R= 100        # #missclassification
+
+R= 50        # #missclassification
 NUM_CLASSES= 10     #for fashionMNIST #classes= 10
 NUM_FL_ROUNDS= 2
-NUM_TRAIN_EPOCH= 1
-POISONING_ALGO=0   #0: no poison (ALSO CHANGE MAL_CLIENT_INDICES to blank list), 1: targeted model poisoning, 2: alternating minimization
+NUM_TRAIN_EPOCH= 50
+MAL_CLIENTS_INDICES= [3,5]            #allowed values: [0 to NUM_CLIENTS-1]
+POISONING_ALGO=1   #0: no poison (ALSO CHANGE MAL_CLIENT_INDICES to blank list), 1: targeted model poisoning, 2: alternating minimization
 
 def change_labels(labels, r_count):
     #change r_count labels from labels
@@ -92,10 +94,16 @@ def load_datasets():
 
     test_loader = DataLoader(test_data, batch_size=BATCH_SIZE)
 
-    return train_loaders, val_loaders, test_loader
+    #use a subset of test data for server side validation (detection algo 1)
+    l= len(test_data)//10
+    lengths= [len(test_data)-l, l]
+    portion1, portion2= random_split(test_data, lengths, generator=torch.Generator().manual_seed(42))
+    val_data_server_loader= DataLoader(portion2, batch_size=BATCH_SIZE)
+
+    return train_loaders, val_loaders, test_loader, val_data_server_loader
 
 # Get the data loaders
-train_loaders, val_loaders, test_loader = load_datasets()
+train_loaders, val_loaders, test_loader, val_data_server_loader = load_datasets()
 
 
 def train_malicious_agent_targeted_poisoning(net, train_loader, epochs: int, verbose=False):
@@ -326,18 +334,68 @@ class FlowerClient(fl.client.NumPyClient):
     def evaluate(self, parameters, config):
         set_parameters(self.net, parameters)
         loss, accuracy = test(self.net, self.val_loader)
-        return float(loss), len(self.val_loader), {"accuracy": float(accuracy)}
+        return float(loss), len(self.val_loader), {"accuracy": float(accuracy),"parameters":get_parameters(self.net), "cid":self.cid}
 
 def client_fn(cid: str) -> FlowerClient:
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     net = modelA().to(DEVICE)
     return FlowerClient(net, train_loaders[int(cid)], val_loaders[int(cid)], cid)
 
+
+def check_for_mal_agents (metrics, val_data_loader, model):
+    #validation accuracy based detection
+    #print(cids)    #all agent ids (random order)
+    #cid and param-> same order e ache? if error in result, check krte hbe
+   
+    threshold= 5        #5% thresholding
+    i= 0
+    malAgentList= []
+    cids=[]
+    params=[]
+    num_examples_list= []
+    for num_examples, m in metrics:
+        num_examples_list.append(num_examples)
+        cids.append(m["cid"])
+        params.append(m["parameters"])
+
+    
+    for cid in cids:
+        param= params[i]
+        set_parameters(model, param)
+        loss1, accuracy1 = test(model, val_data_loader)         #accu value with one client's param
+
+        #now calculate accu value with aggregated params from all other clients
+        avg_param= np.zeros_like(param)
+        
+        total_examples= sum(num_examples_list)
+
+        for j in range (0,len(num_examples_list)):
+            if (j != i):
+                row= 0
+                for p in params[j]:
+                    avg_param[row] += (num_examples_list[i]/total_examples) * p
+                    row += 1
+        
+        set_parameters(model, avg_param)
+        loss2, accuracy2 = test(model, val_data_loader)
+
+        #thresholding
+        if (int(cid) in MAL_CLIENTS_INDICES):
+            print(f"accu values mal, benign= {accuracy1},{accuracy2}")
+        if(abs(accuracy1 - accuracy2) > 5):
+            malAgentList.append(cid)
+        i += 1
+    
+    return malAgentList
+
+
 def weighted_average(metrics: List[Tuple[int, Metrics]]) -> Metrics:
+    
     # Multiply accuracy of each client by number of examples used
     accuracies = [num_examples * m["accuracy"] for num_examples, m in metrics]
     examples = [num_examples for num_examples, _ in metrics]
-
+    malAgentList= check_for_mal_agents(metrics, val_data_server_loader, modelA().to(DEVICE))
+    print(f"Malicious agentes detected (val. accu. method) {malAgentList}")
     # Aggregate and return custom metric (weighted average)
     return {"accuracy": sum(accuracies) / sum(examples)}
 
