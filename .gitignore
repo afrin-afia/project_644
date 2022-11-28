@@ -162,3 +162,5 @@ cython_debug/
 # Javier's options
 *.ini
 *.swp
+*.pt
+*.pkl

@@ -14,11 +14,11 @@ from utils.mnist_models import modelA
 
 # User defined functions
 from utils.partition import unbal_split
+from utils.flower_detection import mal_agents_update_statistics
 
 #NO poisoning: MAL_CLIENTS_INDICES= [], POISONING_ALGO= 0
 #Targeted model poisoning: MAL_CLIENTS_INDICES= [<<mal. indices>>], POISONING_ALGO= 1
 #Alternating minimization: MAL_CLIENTS_INDICES= [<<mal. indices>>], POISONING_ALGO= 2
-
 
 # Get cpu or gpu device for training.
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -301,6 +301,7 @@ def get_parameters(net) -> List[np.ndarray]:
 def set_parameters(net, parameters: List[np.ndarray]) -> None:
     """Set model parameters from a list of NumPy ndarrays."""
     params_dict = zip(net.state_dict().keys(), parameters)
+    #params_dict = zip(net.state_dict().keys(), [np.copy(x) for x in parameters])
     state_dict = OrderedDict({k: torch.Tensor(v) for k, v in params_dict})
     net.load_state_dict(state_dict, strict=True)
 
@@ -334,7 +335,7 @@ class FlowerClient(fl.client.NumPyClient):
     def evaluate(self, parameters, config):
         set_parameters(self.net, parameters)
         loss, accuracy = test(self.net, self.val_loader)
-        return float(loss), len(self.val_loader), {"accuracy": float(accuracy),"parameters":get_parameters(self.net), "cid":self.cid}
+        return float(loss), len(self.val_loader), {"accuracy": float(accuracy),"parameters": get_parameters(self.net), "cid":self.cid}
 
 def client_fn(cid: str) -> FlowerClient:
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -397,6 +398,8 @@ def weighted_average(metrics: List[Tuple[int, Metrics]]) -> Metrics:
     malAgentList= check_for_mal_agents(metrics, val_data_server_loader, modelA().to(DEVICE))
     print(f"Malicious agentes detected (val. accu. method) {malAgentList}")
     # Aggregate and return custom metric (weighted average)
+    malAgentList2 = mal_agents_update_statistics(metrics, val_data_server_loader, modelA().to(DEVICE), debug=True)
+    print(f"Malicious agents detected (weight updt stats.) {malAgentList2}")
     return {"accuracy": sum(accuracies) / sum(examples)}
 
 
