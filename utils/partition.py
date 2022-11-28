@@ -296,6 +296,53 @@ def unbal_split(D, lengths, generator=default_generator, shuffle=True, train=Tru
                   "due to rounding errors. Consider a bigger dataset.")
     return [Subset(D, Ii) for Ii in Ic]
 
+
+def weight_update_statistics(WL, kappa=2, fix = True, debug = False):
+    '''
+    - WL: List of weigths to be compared. Python list with numpy arrays as elements.
+    - kappa: Parameter for the weight detection algo
+    - fix (default = True): Use the "fixed" formula, without the original _typo_
+    - debug (default = False): Print debugging statemets
+    '''
+    n = len(WL)
+    dist_matrix = np.zeros((n,n))
+
+    for i in range(n):
+        for j in range(n):
+            if i == j:
+                dist_matrix[i,j] = np.NaN
+            else:
+                dist_matrix[i,j] = dist_matrix[j,i] = np.linalg.norm(WL[i] - WL[j])
+    
+
+    #dist_matrix = np.array([[np.nan, 0.5, 1.5, 6.0], 
+    #                        [0.5, np.nan, 1.0, 5.0],
+    #                        [1.5, 1.0, np.nan, 2.0],
+    #                        [6.0, 5.0, 2.0, np.nan]])
+    if debug:
+        print(dist_matrix)
+    
+    detect_arr = np.ones(n)
+    for m in range(n):
+        my_min = np.nanmin(dist_matrix[m,:])
+        my_max = np.nanmax(dist_matrix[m,:])
+        they_arr = np.delete(np.delete(dist_matrix, m, 0), m, 1).flatten()
+        their_min = np.nanmin(they_arr)
+        their_max = np.nanmax(they_arr)
+        if fix:
+            if debug:
+                print(f"Agent {m}: Rm [{my_min:.2f}, {my_max:.2f}], R_k\m [{their_min:.2f}, {their_max:.2f}], [|R(l,m)-R(l,k\\m)|, |R(u,m)-R(u,k\\m)|] = {abs(my_min-their_min):.2f}, {abs(my_max-their_max):.2f}")
+            R_max = max(abs(my_min - their_min), abs(my_max-their_max))
+        else:
+            if debug:
+                print(f"Agent {m=}: Rm [{my_min:.2f}, {my_max:.2f}], R_k\m [{their_min:.2f}, {their_max:.2f}], [|R(l,m)-R(u,k\\m)|, |R(u,m)-R(l,k\\m)|] = {abs(my_min-their_max):.2f}, {abs(my_max-their_min):.2f}")
+            R_max = max(abs(my_max - their_min), abs(my_min-their_max))
+        if R_max < kappa:
+            detect_arr[m] = 0
+    return detect_arr
+
+
+
 if __name__ == "__main__":
     print("Hello world")
     config = configparser.ConfigParser()
