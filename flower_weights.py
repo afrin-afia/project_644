@@ -215,9 +215,19 @@ class Custom_FedAvg(fl.server.strategy.FedAvg):
             (parameters_to_ndarrays(fit_res.parameters), fit_res.num_examples)
             for _, fit_res in results
         ]
-        # Output the weights from all clients to the terminal
-        print(f"Weights: {weights_results}")
 
+        # Output the weights from all clients to the terminal
+        # print(f"Weights: {weights_results}")
+
+        # cid and weight mappings
+        cid_weights_dict = {}
+        # Get the client ids from the ray workers
+        client_ids = [client.cid for client, _ in results]
+        for client_id, weights in zip(client_ids, weights_results):
+            cid_weights_dict[client_id] = weights
+
+
+        
         parameters_aggregated = ndarrays_to_parameters(aggregate(weights_results))
 
         # Aggregate custom metrics if aggregation fn was provided
