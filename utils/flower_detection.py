@@ -5,18 +5,38 @@ import pickle
  
 #def check_for_mal_agents (metrics, val_data_loader, model):
 
-def mal_agents_update_statistics(metrics, val_data_loader, model, debug=False):
-    #print("o=o=o=o=o=o=o=o=o=o=o=o=o")
-    #with open("outputs/metrics_dict.pkl", "wb") as handle:
-    #    pickle.dump(metrics, handle, protocol=pickle.HIGHEST_PROTOCOL)
-    #print("o=o=o=o=o=o=o=o=o=o=o=o=o")
-    #return 1
-    WL = []
-    client_order = []
-    for i in range(len(metrics)):
-        WL.append(np.concatenate([x.flatten() for x in metrics[i][1]['parameters']]))
-        client_order.append(int(metrics[i][1]['cid']))
+def mal_agents_update_statistics(metrics, kappa=2, debug=False):
+    '''
+    Wrapper function for weight update statistics.
+    - metrics: A dictionary of client's parameters
+        metrics = {"<client_idx>": [all_params, some_int(?)]}
 
-    mal_unordered = weight_update_statistics(WL, debug=debug)
+    - kappa: Detection sensitivity (lower --> more sensitive)
+    - debug: If True, print statements are enabled
+    '''
+#    print("o=o=o=o=o=o=o=o=o=o=o=o=o")
+#    with open("outputs/metrics_dict2.pkl", "wb") as handle:
+#        pickle.dump(metrics, handle, protocol=pickle.HIGHEST_PROTOCOL)
+#    print("o=o=o=o=o=o=o=o=o=o=o=o=o")
+#    return 1
+
+    client_order = [int(x) for x in metrics.keys()]
+    if debug: print(client_order)
+
+    WL = []
+    for key in metrics.keys():
+        if debug: print(f"{key}: Layers {len(metrics[key][0])}")
+        params_cli = np.concatenate([x.flatten() for x in metrics[key][0]])
+
+        if debug:
+            for j in range(len(metrics[key][0])):
+                print(f"\t{j}: {metrics[key][0][j].shape}")
+
+            print("Total params", params_cli.shape)
+        WL.append(params_cli)
+
+    mal_unordered = weight_update_statistics(WL, kappa =0.7, debug=debug)
     mal_agents = mal_unordered[client_order]
+
+    if debug: print(f"Unordered: {mal_unordered} \nOrdered: {mal_agents}")
     return mal_agents
