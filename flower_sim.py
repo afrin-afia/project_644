@@ -1,6 +1,6 @@
 from collections import OrderedDict
-from typing import List, Tuple
-
+from typing import  Callable, Dict, List, Optional, Tuple, Union
+from logging import WARNING
 import flwr as fl
 import numpy as np 
 import matplotlib.pyplot as plt
@@ -8,17 +8,35 @@ import torch
 import torchvision.transforms as transforms
 from torchvision.datasets import FashionMNIST 
 from flwr.common import Metrics
+from flwr.common import (
+    EvaluateIns,
+    EvaluateRes,
+    FitIns,
+    FitRes,
+    MetricsAggregationFn,
+    NDArrays,
+    Parameters,
+    Scalar,
+    ndarrays_to_parameters,
+    parameters_to_ndarrays,
+)
+from flwr.common.logger import log
+from flwr.server.client_manager import ClientManager
+from flwr.server.client_proxy import ClientProxy
+from flwr.server.strategy.aggregate import aggregate, weighted_loss_avg
 from torch.utils.data import DataLoader, random_split
-
 from utils.mnist_models import modelA
-
 # User defined functions
 from utils.partition import unbal_split
-from utils.flower_detection import mal_agents_update_statistics
-
+#from utils.flower_detection import mal_agents_update_statistics
+from utils.common import test, test_single_data, set_parameters, get_parameters, train_malicious_agent_targeted_poisoning, train_malicious_agent_alternating_minimization
+from utils.detection_algo_val_accuracy import check_for_mal_agents_v2           
+            
+            ########    INSTRUCTIONS    ##########
 #NO poisoning: MAL_CLIENTS_INDICES= [], POISONING_ALGO= 0
 #Targeted model poisoning: MAL_CLIENTS_INDICES= [<<mal. indices>>], POISONING_ALGO= 1
 #Alternating minimization: MAL_CLIENTS_INDICES= [<<mal. indices>>], POISONING_ALGO= 2
+
 
 # Get cpu or gpu device for training.
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -26,27 +44,13 @@ print(f"Using {DEVICE} device")
 
 NUM_CLIENTS = 10
 BATCH_SIZE = 64
-
-
-R= 50        # #missclassification
-NUM_CLASSES= 10     #for fashionMNIST #classes= 10
+R= 1                            # #missclassification
+NUM_CLASSES= 10                 #for fashionMNIST #classes= 10
 NUM_FL_ROUNDS= 2
 NUM_TRAIN_EPOCH= 50
-MAL_CLIENTS_INDICES= [3,5]            #allowed values: [0 to NUM_CLIENTS-1]
-POISONING_ALGO=1   #0: no poison (ALSO CHANGE MAL_CLIENT_INDICES to blank list), 1: targeted model poisoning, 2: alternating minimization
+MAL_CLIENTS_INDICES= [3,5]      #allowed values: [0 to NUM_CLIENTS-1]
+POISONING_ALGO=1                #allowed values: [0, 1, 2]
 
-def change_labels(labels, r_count):
-    #change r_count labels from labels
-    upper= r_count
-    if(upper > len(labels)):
-        upper= len(labels)
-
-    for i in range(0, upper):    #indices:
-        true_label= labels[i]
-        new_lab= (true_label + 1)% NUM_CLASSES
-        labels[i]= new_lab
-
-    return upper, labels
 
 def load_datasets():
     # Define the transformation to Fashion MNIST
@@ -106,137 +110,14 @@ def load_datasets():
 train_loaders, val_loaders, test_loader, val_data_server_loader = load_datasets()
 
 
-def train_malicious_agent_targeted_poisoning(net, train_loader, epochs: int, verbose=False):
-    images_list= []
-    labels_list= []
-    r_count= R
-    
-    for images, labels in train_loader:
-        if(r_count > 0):
-            number_of_changes, new_labels= change_labels(labels.clone(), r_count)
-            images_list.append(images[0:number_of_changes])
-            labels_list.append(new_labels[0:number_of_changes])
-            r_count= r_count - number_of_changes
-            if(r_count == 0):
-                torch.save(images[0], 'poisoned_sample.pt')
-                torch.save(labels[0], 'true_label.pt')
-                torch.save(new_labels[0], 'malicious_label.pt')
-
-        else:
-            break 
-
-    DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    criterion = torch.nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(net.parameters(), lr=0.001)
-    net.train()
-    for epoch in range(epochs):
-        correct, total, epoch_loss = 0, 0, 0.0
-        
-        for i in range(len(images_list)):
-            images= images_list[i]       #batch gradient descent. train only with mislabelled samples   
-            labels= labels_list[i]
-            images, labels = images.to(DEVICE), labels.to(DEVICE)
-            optimizer.zero_grad()
-            outputs = net(images)
-            loss = criterion(outputs, labels)
-            loss= NUM_CLIENTS * loss            #scalar loss
-            loss.backward()
-            optimizer.step()
-            # Metrics
-            epoch_loss += loss 
-            total += labels.size(0)
-            correct += (torch.max(outputs, 1)[1] == labels).sum().item()
-        epoch_loss /= len(train_loader.dataset)
-        epoch_acc = correct / total
-
-        if verbose:
-            print(f"Malicious agent(targeted poisoning), epoch {epoch+1} | Loss: {epoch_loss:.4f} | Acc: {epoch_acc:.4f}") 
-    
-def train_malicious_agent_alternating_minimization(net, train_loader, epochs: int, global_params, verbose=False):
-    my_previous_params= get_parameters(net)
-    images_list= []
-    labels_list= []
-    r_count= R
-    
-    clean_images_list= []
-    clean_labels_list= [] 
-    for images, labels in train_loader:
-        if(r_count > 0):
-            number_of_changes, new_labels= change_labels(labels.clone(), r_count)
-            images_list.append(images[0:number_of_changes])
-            labels_list.append(new_labels[0:number_of_changes])
-            r_count= r_count - number_of_changes
-            if(r_count == 0):
-                torch.save(images[0], 'poisoned_sample.pt')
-                torch.save(labels[0], 'true_label.pt')
-                torch.save(new_labels[0], 'malicious_label.pt')
-                clean_images_list.append(images[number_of_changes:])
-                clean_labels_list.append(labels[number_of_changes:])
-
-        else:
-            clean_images_list.append(images)
-            clean_labels_list.append(labels)
-
-    DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    criterion = torch.nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(net.parameters(), lr=0.001)
-    net.train()
-    for epoch in range(epochs):
-        correct, total, epoch_loss = 0, 0, 0.0
-        
-        if(epoch % 11 == 0):
-            for i in range(len(images_list)):
-                images= images_list[i]       #batch gradient descent. train only with mislabelled samples   
-                labels= labels_list[i]
-                images, labels = images.to(DEVICE), labels.to(DEVICE)
-                optimizer.zero_grad()
-                outputs = net(images)
-                loss = criterion(outputs, labels)
-                loss= NUM_CLIENTS * loss               #lambda * L
-                loss.backward()
-                optimizer.step()
-                # Metrics
-                epoch_loss += loss 
-                total += labels.size(0)
-                correct += (torch.max(outputs, 1)[1] == labels).sum().item()
-        else: 
-            for i in range(len(clean_images_list)):
-                images= clean_images_list[i]       #batch gradient descent. train only with mislabelled samples   
-                labels= clean_labels_list[i]
-                images, labels = images.to(DEVICE), labels.to(DEVICE)
-                optimizer.zero_grad()
-                outputs = net(images)
-                loss1 = criterion(outputs, labels)       #loss over training data (2nd component of loss function)
-                
-                #option 1
-                loss2= 0            #3rd component of loss function
-                for i in range (0,len(global_params)): 
-                    my_previous_params_weighted= [(len(train_loader)/len(train_loaders))* elem for elem in my_previous_params]  
-                    prev_benign_param= global_params[i] - my_previous_params_weighted[i]
-                    loss2 += np.linalg.norm(get_parameters(net)[i]- prev_benign_param)
-                    #loss2 += np.linalg.norm(get_parameters(net)[i]- global_params[i]) #global accu=.84 after round2   
-                                                      
-                loss= loss1 + loss2
-                loss.backward()
-                optimizer.step()
-                # Metrics
-                epoch_loss += loss 
-                total += labels.size(0)
-                correct += (torch.max(outputs, 1)[1] == labels).sum().item()
-        epoch_loss /= len(train_loader.dataset)
-        epoch_acc = correct / total
-
-        if verbose:
-            print(f"Malicious agent (alt. min.), epoch {epoch+1} | Loss: {epoch_loss:.4f} | Acc: {epoch_acc:.4f}")
-
 def train(cid, net, train_loader, epochs: int, verbose=False, global_params= None):
     
     if(int(cid) in MAL_CLIENTS_INDICES):
         if(POISONING_ALGO == 1):
-            train_malicious_agent_targeted_poisoning(net, train_loader, epochs, verbose)
+            train_malicious_agent_targeted_poisoning(net, R, NUM_CLASSES, NUM_CLIENTS, train_loader, epochs, verbose)
             return 
         else: 
-            train_malicious_agent_alternating_minimization(net, train_loader, epochs, global_params, verbose)
+            train_malicious_agent_alternating_minimization(net, R, NUM_CLASSES, NUM_CLIENTS, len(train_loaders), train_loader, epochs, global_params, verbose)
             return
     
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -263,48 +144,6 @@ def train(cid, net, train_loader, epochs: int, verbose=False, global_params= Non
             print(f"Epoch {epoch+1} | Loss: {epoch_loss:.4f} | Acc: {epoch_acc:.4f}")
            
 
-def test(net, test_loader):
-    DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    criterion = torch.nn.CrossEntropyLoss()
-    correct, total, loss = 0, 0, 0.0
-    net.eval()
-    with torch.no_grad():
-        for images, labels in test_loader:
-            images, labels = images.to(DEVICE), labels.to(DEVICE)
-            outputs = net(images)
-            loss += criterion(outputs, labels)
-            _, predicted = torch.max(outputs.data, 1)
-            total += labels.size(0)
-            correct += (predicted == labels).sum().item()
-        loss /= len(test_loader.dataset)
-        accuracy = correct / total
-
-        return loss, accuracy
-
-def test_single_data(net, data):
-    DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    criterion = torch.nn.CrossEntropyLoss()
-    correct, total, loss = 0, 0, 0.0
-    net.eval()
-    with torch.no_grad():
-        image= data.unsqueeze(0)
-        image = image.to(DEVICE)
-        output = net(image)
-        _, predicted = torch.max(output.data,1)
-        
-    return predicted 
-
-def get_parameters(net) -> List[np.ndarray]:
-    """Get model parameters as a list of NumPy ndarrays."""
-    return [val.cpu().numpy() for _, val in net.state_dict().items()]
-
-def set_parameters(net, parameters: List[np.ndarray]) -> None:
-    """Set model parameters from a list of NumPy ndarrays."""
-    params_dict = zip(net.state_dict().keys(), parameters)
-    #params_dict = zip(net.state_dict().keys(), [np.copy(x) for x in parameters])
-    state_dict = OrderedDict({k: torch.Tensor(v) for k, v in params_dict})
-    net.load_state_dict(state_dict, strict=True)
-
 class FlowerClient(fl.client.NumPyClient):
     def __init__(self, net, train_loader, val_loader, cid):
         self.net = net 
@@ -319,15 +158,15 @@ class FlowerClient(fl.client.NumPyClient):
         set_parameters(self.net, parameters)
         if(int(self.cid) in MAL_CLIENTS_INDICES):
             if(POISONING_ALGO==1):
-                train(self.cid, self.net, self.train_loader, epochs=NUM_TRAIN_EPOCH)
+                train(self.cid, MAL_CLIENTS_INDICES, POISONING_ALGO, self.net, self.train_loader, epochs=NUM_TRAIN_EPOCH)
                 boosted_params= get_parameters(self.net)
                 boosted_params= [element * NUM_CLIENTS for element in boosted_params]
                 return boosted_params, len(self.train_loader), {}
             else:       #alternating minimization
-                train(self.cid, self.net, self.train_loader, epochs=NUM_TRAIN_EPOCH*10, global_params= parameters)
+                train(self.cid, MAL_CLIENTS_INDICES, POISONING_ALGO, self.net, self.train_loader, epochs=NUM_TRAIN_EPOCH*10, global_params= parameters)
 
         else:               #benign agent
-            train(self.cid, self.net, self.train_loader, epochs=NUM_TRAIN_EPOCH)
+            train(self.cid, MAL_CLIENTS_INDICES, POISONING_ALGO, self.net, self.train_loader, epochs=NUM_TRAIN_EPOCH)
 
         return get_parameters(self.net), len(self.train_loader), {}
 
@@ -335,7 +174,7 @@ class FlowerClient(fl.client.NumPyClient):
     def evaluate(self, parameters, config):
         set_parameters(self.net, parameters)
         loss, accuracy = test(self.net, self.val_loader)
-        return float(loss), len(self.val_loader), {"accuracy": float(accuracy),"parameters": get_parameters(self.net), "cid":self.cid}
+        return float(loss), len(self.val_loader), {"accuracy": float(accuracy)}
 
 def client_fn(cid: str) -> FlowerClient:
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -343,63 +182,11 @@ def client_fn(cid: str) -> FlowerClient:
     return FlowerClient(net, train_loaders[int(cid)], val_loaders[int(cid)], cid)
 
 
-def check_for_mal_agents (metrics, val_data_loader, model):
-    #validation accuracy based detection
-    #print(cids)    #all agent ids (random order)
-    #cid and param-> same order e ache? if error in result, check krte hbe
-   
-    threshold= 5        #5% thresholding
-    i= 0
-    malAgentList= []
-    cids=[]
-    params=[]
-    num_examples_list= []
-    for num_examples, m in metrics:
-        num_examples_list.append(num_examples)
-        cids.append(m["cid"])
-        params.append(m["parameters"])
-
-    
-    for cid in cids:
-        param= params[i]
-        set_parameters(model, param)
-        loss1, accuracy1 = test(model, val_data_loader)         #accu value with one client's param
-
-        #now calculate accu value with aggregated params from all other clients
-        avg_param= np.zeros_like(param)
-        
-        total_examples= sum(num_examples_list)
-
-        for j in range (0,len(num_examples_list)):
-            if (j != i):
-                row= 0
-                for p in params[j]:
-                    avg_param[row] += (num_examples_list[i]/total_examples) * p
-                    row += 1
-        
-        set_parameters(model, avg_param)
-        loss2, accuracy2 = test(model, val_data_loader)
-
-        #thresholding
-        if (int(cid) in MAL_CLIENTS_INDICES):
-            print(f"accu values mal, benign= {accuracy1},{accuracy2}")
-        if(abs(accuracy1 - accuracy2) > 5):
-            malAgentList.append(cid)
-        i += 1
-    
-    return malAgentList
-
-
 def weighted_average(metrics: List[Tuple[int, Metrics]]) -> Metrics:
     
     # Multiply accuracy of each client by number of examples used
     accuracies = [num_examples * m["accuracy"] for num_examples, m in metrics]
     examples = [num_examples for num_examples, _ in metrics]
-    malAgentList= check_for_mal_agents(metrics, val_data_server_loader, modelA().to(DEVICE))
-    print(f"Malicious agentes detected (val. accu. method) {malAgentList}")
-    # Aggregate and return custom metric (weighted average)
-    malAgentList2 = mal_agents_update_statistics(metrics, val_data_server_loader, modelA().to(DEVICE), debug=True)
-    print(f"Malicious agents detected (weight updt stats.) {malAgentList2}")
     return {"accuracy": sum(accuracies) / sum(examples)}
 
 
@@ -420,9 +207,65 @@ def evaluate(server_round: int, parameters: fl.common.NDArrays, config):
         print(f"true, malicious, and predicted labels= {true_label}, {mal_label}, {predicted_label}")
     return loss, {"accuracy": accuracy}
 
+
 # This is the aggregration strategy that we are using for our experiments
 # We are sampling from all clients and evaluating the model on all their evaluation data
-stragegy = fl.server.strategy.FedAvg(
+class Custom_FedAvg(fl.server.strategy.FedAvg):
+    """
+    Custom FedAvg strategy that will output each individual client's parameters during after training
+    It uses the same FedAvg logic, but it will output the parameters of each client after training
+    """
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+
+    def aggregate_fit(
+        self,
+        server_round: int,
+        results: List[Tuple[ClientProxy, FitRes]],
+        failures: List[Union[Tuple[ClientProxy, FitRes], BaseException]],
+    ) -> Tuple[Optional[Parameters], Dict[str, Scalar]]:
+        """Aggregate fit results using weighted average."""
+        if not results:
+            return None, {}
+        # Do not aggregate if there are failures and failures are not accepted
+        if not self.accept_failures and failures:
+            return None, {}
+
+        # Convert results
+        weights_results = [
+            (parameters_to_ndarrays(fit_res.parameters), fit_res.num_examples)
+            for _, fit_res in results
+        ]
+        # Output the weights from all clients to the terminal
+        #print(f"Weights: {weights_results[0][1]}")
+        #exit() 
+        # cid and weight mappings
+        cid_weights_dict = {}
+        # Get the client ids from the ray workers
+        client_ids = [client.cid for client, _ in results]
+        for client_id, weights in zip(client_ids, weights_results):
+            cid_weights_dict[client_id] = weights
+
+        parameters_aggregated = ndarrays_to_parameters(aggregate(weights_results))
+
+        # Aggregate custom metrics if aggregation fn was provided
+        metrics_aggregated = {}
+        if self.fit_metrics_aggregation_fn:
+            fit_metrics = [(res.num_examples, res.metrics) for _, res in results]
+            metrics_aggregated = self.fit_metrics_aggregation_fn(fit_metrics)
+        elif server_round == 1:  # Only log this warning once
+            log(WARNING, "No fit_metrics_aggregation_fn provided")
+
+        #malAgentList= check_for_mal_agents(weights_results, val_data_server_loader, modelA().to(DEVICE))
+        malAgentList= check_for_mal_agents_v2(cid_weights_dict, val_data_server_loader, modelA().to(DEVICE))
+        print(f"Malicious agentes detected (val. accu. method) {malAgentList}")
+        
+        # Aggregate and return custom metric (weighted average)
+        #malAgentList2 = mal_agents_update_statistics(weights_results, debug=True)
+        #print(f"Malicious agents detected (weight updt stats.) {malAgentList2}")
+        return parameters_aggregated, metrics_aggregated
+
+stragegy = Custom_FedAvg(
     fraction_fit=1.0,  # Sample 100% of available clients for training
     fraction_evaluate=1.0,  # Sample 100% of available clients for evaluation
     min_fit_clients=10,  # Never sample less than 10 clients for training
@@ -451,11 +294,3 @@ hist = fl.simulation.start_simulation(
 
 for acc in hist.metrics_distributed['accuracy']:
     print(acc)
-
-#testnet= torch.load('models/model_with_algo_1.pth')
-#data= torch.load("poisoned_sample.pt")
-#true_label= torch.load('true_label.pt')
-#mal_label= torch.load('malicious_label.pt')
-#predicted_label= test_single_data(testnet, data)
-#print(f"true, malicious, and predicted labels= {true_label}, {mal_label}, {predicted_label}")
-
