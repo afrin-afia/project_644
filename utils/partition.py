@@ -330,13 +330,13 @@ def weight_update_statistics(WL, kappa=2, fix = True, debug = False):
         their_min = np.nanmin(they_arr)
         their_max = np.nanmax(they_arr)
         if fix:
-            if debug:
-                print(f"Agent {m}: Rm [{my_min:.2f}, {my_max:.2f}], R_k\m [{their_min:.2f}, {their_max:.2f}], [|R(l,m)-R(l,k\\m)|, |R(u,m)-R(u,k\\m)|] = {abs(my_min-their_min):.2f}, {abs(my_max-their_max):.2f}")
             R_max = max(abs(my_min - their_min), abs(my_max-their_max))
-        else:
             if debug:
-                print(f"Agent {m=}: Rm [{my_min:.2f}, {my_max:.2f}], R_k\m [{their_min:.2f}, {their_max:.2f}], [|R(l,m)-R(u,k\\m)|, |R(u,m)-R(l,k\\m)|] = {abs(my_min-their_max):.2f}, {abs(my_max-their_min):.2f}")
+                print(f"Agent {m}: Rm [{my_min:.2f}, {my_max:.2f}], R_k\m [{their_min:.2f}, {their_max:.2f}], [|R(l,m)-R(l,k\\m)|, |R(u,m)-R(u,k\\m)|] = {abs(my_min-their_min):.2f}, {abs(my_max-their_max):.2f}; max {R_max:.2f}")
+        else:
             R_max = max(abs(my_max - their_min), abs(my_min-their_max))
+            if debug:
+                print(f"Agent {m=}: Rm [{my_min:.2f}, {my_max:.2f}], R_k\m [{their_min:.2f}, {their_max:.2f}], [|R(l,m)-R(u,k\\m)|, |R(u,m)-R(l,k\\m)|] = {abs(my_min-their_max):.2f}, {abs(my_max-their_min):.2f}; max {R_max:.2f}")
         if R_max < kappa:
             detect_arr[m] = 0
     return detect_arr
