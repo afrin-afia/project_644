@@ -47,8 +47,8 @@ NUM_CLIENTS = 10
 BATCH_SIZE = 64
 
 NUM_CLASSES = 10     #for fashionMNIST #classes= 10
-NUM_FL_ROUNDS = 2
-NUM_TRAIN_EPOCH = 1
+NUM_FL_ROUNDS = 40
+NUM_TRAIN_EPOCH = 5
 IMBALANCE_RATIO = 0.1
 KAPPA = 0.7 # Param for detection algo 2
 
@@ -229,7 +229,7 @@ class Custom_FedAvg(fl.server.strategy.FedAvg):
 
         # Detection Algo #2
         global KAPPA
-        mal_agents_update = mal_agents_update_statistics(cid_weights_dict, kappa=KAPPA, debug=False)
+        mal_agents_update = mal_agents_update_statistics(cid_weights_dict, kappa=KAPPA, server_round=server_round, save_params = True, debug=False)
         print(f"Detection method #2, {KAPPA=}, agents' idx detected {mal_agents_update}")
         
         parameters_aggregated = ndarrays_to_parameters(aggregate(weights_results))
@@ -257,7 +257,7 @@ stragegy = Custom_FedAvg(
 # Set the number of cpus for how many ray instance you want to have running or being at idle
 ray_init_args = {
     "include_dashboard": True,
-    "num_cpus": 6,
+    "num_cpus": 11,
 }
 # Set the number of gpus to be (num of gpus) / (number of running instances) 
 client_resources = {

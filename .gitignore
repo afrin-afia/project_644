@@ -164,3 +164,5 @@ cython_debug/
 *.swp
 *.pt
 *.pkl
+old/
+outputs/

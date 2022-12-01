@@ -5,7 +5,7 @@ import pickle
  
 #def check_for_mal_agents (metrics, val_data_loader, model):
 
-def mal_agents_update_statistics(metrics, kappa=2, debug=False):
+def mal_agents_update_statistics(metrics, kappa=2, server_round=-1, save_params=False, debug=False):
     '''
     Wrapper function for weight update statistics.
     - metrics: A dictionary of client's parameters
@@ -15,10 +15,15 @@ def mal_agents_update_statistics(metrics, kappa=2, debug=False):
     - debug: If True, print statements are enabled
     '''
 #    print("o=o=o=o=o=o=o=o=o=o=o=o=o")
-#    with open("outputs/metrics_dict2.pkl", "wb") as handle:
-#        pickle.dump(metrics, handle, protocol=pickle.HIGHEST_PROTOCOL)
-#    print("o=o=o=o=o=o=o=o=o=o=o=o=o")
-#    return 1
+    if save_params:
+        if server_round >=0:
+            print(f"Saving parameters, round {server_round}...")
+            with open(f"outputs/{server_round}_metrics.pkl", "wb") as handle:
+                pickle.dump(metrics,handle, protocol=pickle.HIGHEST_PROTOCOL)
+            print("Saved")
+        else:
+            print("Must provide server round!!! not saving parameters")
+
 
     client_order = [int(x) for x in metrics.keys()]
     if debug: print(client_order)
@@ -35,7 +40,7 @@ def mal_agents_update_statistics(metrics, kappa=2, debug=False):
             print("Total params", params_cli.shape)
         WL.append(params_cli)
 
-    mal_unordered = weight_update_statistics(WL, kappa =0.7, debug=debug)
+    mal_unordered = weight_update_statistics(WL, kappa =kappa, debug=debug)
     mal_agents = mal_unordered[client_order]
 
     if debug: print(f"Unordered: {mal_unordered} \nOrdered: {mal_agents}")

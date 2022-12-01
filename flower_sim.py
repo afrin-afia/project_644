@@ -31,6 +31,7 @@ from utils.partition import unbal_split
 from utils.flower_detection import mal_agents_update_statistics
 from utils.common import test, test_single_data, set_parameters, get_parameters, train_malicious_agent_targeted_poisoning, train_malicious_agent_alternating_minimization
 from utils.detection_algo_val_accuracy import check_for_mal_agents_v2           
+from utils.flower_detection import mal_agents_update_statistics
             
             ########    INSTRUCTIONS    ##########
 #NO poisoning: MAL_CLIENTS_INDICES= [], POISONING_ALGO= 0
@@ -46,10 +47,11 @@ NUM_CLIENTS = 10
 BATCH_SIZE = 64
 R= 1                            # #missclassification
 NUM_CLASSES= 10                 #for fashionMNIST #classes= 10
-NUM_FL_ROUNDS= 40
+NUM_FL_ROUNDS= 20
 NUM_TRAIN_EPOCH= 5
 MAL_CLIENTS_INDICES= [3] #[3,5,8]      #allowed values: [0 to NUM_CLIENTS-1]
-POISONING_ALGO=1                #allowed values: [0, 1, 2]
+POISONING_ALGO=2                #allowed values: [0, 1, 2]
+KAPPA = 0.7
 
 def load_datasets():
     # Define the transformation to Fashion MNIST
@@ -240,6 +242,11 @@ class Custom_FedAvg(fl.server.strategy.FedAvg):
         client_ids = [client.cid for client, _ in results]
         for client_id, weights in zip(client_ids, weights_results):
             cid_weights_dict[client_id] = weights
+
+        # Detection Algo #2
+        global KAPPA
+        mal_agents_update = mal_agents_update_statistics(cid_weights_dict, kappa=KAPPA, server_round=server_round, save_params = True, debug=False)
+        print(f"Detection method #2, {KAPPA=}, agents' idx detected {mal_agents_update}")
 
         parameters_aggregated = ndarrays_to_parameters(aggregate(weights_results))
 
