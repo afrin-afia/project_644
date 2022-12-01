@@ -176,7 +176,7 @@ class FlowerClient(fl.client.NumPyClient):
 def client_fn(cid: str) -> FlowerClient:
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     net = modelA().to(DEVICE)
-    return FlowerClient(net, train_loaders[int(cid)], val_loaders[int(cid)], cid)
+    return FlowerClient(net, train_loaders[int(cid)], test_loader], cid)
 
 def weighted_average(metrics: List[Tuple[int, Metrics]]) -> Metrics:
     
