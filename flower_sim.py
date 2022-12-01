@@ -28,7 +28,7 @@ from torch.utils.data import DataLoader, random_split
 from utils.mnist_models import modelA
 # User defined functions
 from utils.partition import unbal_split
-#from utils.flower_detection import mal_agents_update_statistics
+from utils.flower_detection import mal_agents_update_statistics
 from utils.common import test, test_single_data, set_parameters, get_parameters, train_malicious_agent_targeted_poisoning, train_malicious_agent_alternating_minimization
 from utils.detection_algo_val_accuracy import check_for_mal_agents_v2           
             
@@ -46,11 +46,10 @@ NUM_CLIENTS = 10
 BATCH_SIZE = 64
 R= 1                            # #missclassification
 NUM_CLASSES= 10                 #for fashionMNIST #classes= 10
-NUM_FL_ROUNDS= 2
-NUM_TRAIN_EPOCH= 50
-MAL_CLIENTS_INDICES= [3,5]      #allowed values: [0 to NUM_CLIENTS-1]
+NUM_FL_ROUNDS= 40
+NUM_TRAIN_EPOCH= 5
+MAL_CLIENTS_INDICES= [3] #[3,5,8]      #allowed values: [0 to NUM_CLIENTS-1]
 POISONING_ALGO=1                #allowed values: [0, 1, 2]
-
 
 def load_datasets():
     # Define the transformation to Fashion MNIST
@@ -109,7 +108,6 @@ def load_datasets():
 # Get the data loaders
 train_loaders, val_loaders, test_loader, val_data_server_loader = load_datasets()
 
-
 def train(cid, net, train_loader, epochs: int, verbose=False, global_params= None):
     
     if(int(cid) in MAL_CLIENTS_INDICES):
@@ -141,8 +139,7 @@ def train(cid, net, train_loader, epochs: int, verbose=False, global_params= Non
         epoch_acc = correct / total
 
         if verbose:
-            print(f"Epoch {epoch+1} | Loss: {epoch_loss:.4f} | Acc: {epoch_acc:.4f}")
-           
+            print(f"Epoch {epoch+1} | Loss: {epoch_loss:.4f} | Acc: {epoch_acc:.4f}")          
 
 class FlowerClient(fl.client.NumPyClient):
     def __init__(self, net, train_loader, val_loader, cid):
@@ -158,15 +155,15 @@ class FlowerClient(fl.client.NumPyClient):
         set_parameters(self.net, parameters)
         if(int(self.cid) in MAL_CLIENTS_INDICES):
             if(POISONING_ALGO==1):
-                train(self.cid, MAL_CLIENTS_INDICES, POISONING_ALGO, self.net, self.train_loader, epochs=NUM_TRAIN_EPOCH)
+                train(self.cid, self.net, self.train_loader, epochs=NUM_TRAIN_EPOCH)
                 boosted_params= get_parameters(self.net)
                 boosted_params= [element * NUM_CLIENTS for element in boosted_params]
                 return boosted_params, len(self.train_loader), {}
             else:       #alternating minimization
-                train(self.cid, MAL_CLIENTS_INDICES, POISONING_ALGO, self.net, self.train_loader, epochs=NUM_TRAIN_EPOCH*10, global_params= parameters)
+                train(self.cid, self.net, self.train_loader, epochs=NUM_TRAIN_EPOCH*10, global_params= parameters)
 
         else:               #benign agent
-            train(self.cid, MAL_CLIENTS_INDICES, POISONING_ALGO, self.net, self.train_loader, epochs=NUM_TRAIN_EPOCH)
+            train(self.cid, self.net, self.train_loader, epochs=NUM_TRAIN_EPOCH)
 
         return get_parameters(self.net), len(self.train_loader), {}
 
@@ -181,14 +178,12 @@ def client_fn(cid: str) -> FlowerClient:
     net = modelA().to(DEVICE)
     return FlowerClient(net, train_loaders[int(cid)], val_loaders[int(cid)], cid)
 
-
 def weighted_average(metrics: List[Tuple[int, Metrics]]) -> Metrics:
     
     # Multiply accuracy of each client by number of examples used
     accuracies = [num_examples * m["accuracy"] for num_examples, m in metrics]
     examples = [num_examples for num_examples, _ in metrics]
     return {"accuracy": sum(accuracies) / sum(examples)}
-
 
 def evaluate(server_round: int, parameters: fl.common.NDArrays, config):
     net = modelA().to(DEVICE)
@@ -256,9 +251,8 @@ class Custom_FedAvg(fl.server.strategy.FedAvg):
         elif server_round == 1:  # Only log this warning once
             log(WARNING, "No fit_metrics_aggregation_fn provided")
 
-        #malAgentList= check_for_mal_agents(weights_results, val_data_server_loader, modelA().to(DEVICE))
-        malAgentList= check_for_mal_agents_v2(cid_weights_dict, val_data_server_loader, modelA().to(DEVICE))
-        print(f"Malicious agentes detected (val. accu. method) {malAgentList}")
+        #malAgentList= check_for_mal_agents_v2(cid_weights_dict, val_data_server_loader, modelA().to(DEVICE))
+        #print(f"Malicious agentes detected (val. accu. method) {malAgentList}")
         
         # Aggregate and return custom metric (weighted average)
         #malAgentList2 = mal_agents_update_statistics(weights_results, debug=True)
@@ -292,5 +286,7 @@ hist = fl.simulation.start_simulation(
     client_resources=client_resources,
 )
 
+#accu_values=[]
 for acc in hist.metrics_distributed['accuracy']:
     print(acc)
+#    accu_values.append(acc[1])
