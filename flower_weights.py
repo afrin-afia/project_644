@@ -36,7 +36,7 @@ from utils.mnist_models import modelA
 
 # User defined functions
 from utils.partition import unbal_split
-
+from utils.flower_detection import mal_agents_update_statistics
 
 
 # Get cpu or gpu device for training.
@@ -50,6 +50,7 @@ NUM_CLASSES = 10     #for fashionMNIST #classes= 10
 NUM_FL_ROUNDS = 2
 NUM_TRAIN_EPOCH = 1
 IMBALANCE_RATIO = 0.1
+KAPPA = 0.7 # Param for detection algo 2
 
 
 def load_datasets():
@@ -226,7 +227,10 @@ class Custom_FedAvg(fl.server.strategy.FedAvg):
         for client_id, weights in zip(client_ids, weights_results):
             cid_weights_dict[client_id] = weights
 
-
+        # Detection Algo #2
+        global KAPPA
+        mal_agents_update = mal_agents_update_statistics(cid_weights_dict, kappa=KAPPA, debug=False)
+        print(f"Detection method #2, {KAPPA=}, agents' idx detected {mal_agents_update}")
         
         parameters_aggregated = ndarrays_to_parameters(aggregate(weights_results))
 
