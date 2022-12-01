@@ -49,7 +49,7 @@ NUM_CLASSES= 10                 #for fashionMNIST #classes= 10
 NUM_FL_ROUNDS= 40
 NUM_TRAIN_EPOCH= 5
 MAL_CLIENTS_INDICES= [3] #[3,5,8]      #allowed values: [0 to NUM_CLIENTS-1]
-POISONING_ALGO=1                #allowed values: [0, 1, 2]
+POISONING_ALGO=2                #allowed values: [0, 1, 2]
 
 def load_datasets():
     # Define the transformation to Fashion MNIST
@@ -176,7 +176,7 @@ class FlowerClient(fl.client.NumPyClient):
 def client_fn(cid: str) -> FlowerClient:
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     net = modelA().to(DEVICE)
-    return FlowerClient(net, train_loaders[int(cid)], test_loader], cid)
+    return FlowerClient(net, train_loaders[int(cid)], test_loader, cid)
 
 def weighted_average(metrics: List[Tuple[int, Metrics]]) -> Metrics:
     
@@ -270,7 +270,7 @@ stragegy = Custom_FedAvg(
 # Set the number of cpus for how many ray instance you want to have running or being at idle
 ray_init_args = {
     "include_dashboard": True,
-    "num_cpus": 6,
+    "num_cpus": 11,
 }
 # Set the number of gpus to be (num of gpus) / (number of running instances) 
 client_resources = {
