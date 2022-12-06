@@ -8,6 +8,7 @@ import torch
 import torchvision.transforms as transforms
 import argparse
 import os
+import pickle
 
 from torchvision.datasets import FashionMNIST 
 from flwr.common import Metrics
