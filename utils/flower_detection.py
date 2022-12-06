@@ -40,3 +40,12 @@ def mal_agents_update_statistics(metrics, kappa=2, debug=False, fix=True):
 
     if debug: print(f"Unordered: {mal_unordered} \nOrdered: {mal_agents}")
     return mal_agents
+
+def save_weights(metrics, dest_dir, server_round):
+    print(f"Saving weights for round {server_round}")
+    file_name = f"metrics_dict_{server_round:02d}.pkl"
+    path = os.path.join(dest_dir, file_name)
+    with open(path, "wb") as handle:
+        pickle.dump(metrics, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    print("Saved...")
+
