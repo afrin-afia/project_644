@@ -95,7 +95,7 @@ NUM_CLASSES= 10                 #for fashionMNIST #classes= 10
 NUM_FL_ROUNDS= 40
 NUM_TRAIN_EPOCH= 5
 if R == 0:
-    print("R is {R}. So no attacks")
+    print(f"R is {R}. So no attacks")
     MAL_CLIENTS_INDICES = []
     POISONING_ALGO = 0
 else:
