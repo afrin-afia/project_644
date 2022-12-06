@@ -344,3 +344,8 @@ hist = fl.simulation.start_simulation(
 for acc in hist.metrics_distributed['accuracy']:
     print(acc)
 #    accu_values.append(acc[1])
+file_acc = 'hist.pkl'
+path = os.path.join(dest_dir, file_acc)
+with open(path, "wb") as handle:
+    pickle.dump(hist, handle, protocol=HIGHEST_PROTOCOL)
+print("Done")
