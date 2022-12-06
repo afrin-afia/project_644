@@ -348,5 +348,5 @@ for acc in hist.metrics_distributed['accuracy']:
 file_acc = 'hist.pkl'
 path = os.path.join(dest_dir, file_acc)
 with open(path, "wb") as handle:
-    pickle.dump(hist, handle, protocol=HIGHEST_PROTOCOL)
+    pickle.dump(hist, handle, protocol=pickle.HIGHEST_PROTOCOL)
 print("Done")
