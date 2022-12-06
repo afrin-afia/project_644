@@ -92,7 +92,7 @@ NUM_CLIENTS = 10
 BATCH_SIZE = 64
 #R= 1                            # #missclassification
 NUM_CLASSES= 10                 #for fashionMNIST #classes= 10
-NUM_FL_ROUNDS= 40
+NUM_FL_ROUNDS= 20
 NUM_TRAIN_EPOCH= 5
 if R == 0:
     print(f"R is {R}. So no attacks")
