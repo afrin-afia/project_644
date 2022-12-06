@@ -45,7 +45,6 @@ from utils.detection_algo_val_accuracy import check_for_mal_agents_v2
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using {DEVICE} device")
 
-
 ## Arguments
 parser = argparse.ArgumentParser()
 parser.add_argument("-R", "--NumMal", help = "Number of malicious clients", type=int, required=True)
@@ -56,8 +55,8 @@ parser.add_argument("-N", help = "Automatically NO rewrite", action = "store_tru
 args = parser.parse_args()
 
 # R 
-if args.NumMal:
-    R = int(args.NumMal)
+if args.NumMal is not None:
+    R = args.NumMal
 
 ## Directories
 if args.Directory:
@@ -65,14 +64,12 @@ if args.Directory:
 else:
     results_dir = f"Results_r{R:05d}"
 
-file_name = 'test.txt'
-
 script_dir = os.path.dirname(os.path.abspath(__file__))
 dest_dir = os.path.join(script_dir, '..', 'outputs', results_dir)
-print(dest_dir)
+print(f"Will save results to {dest_dir}")
 
 if  os.path.exists(dest_dir):
-    print(f"{dest_dir} already exists.", end='')
+    print("Already exists.", end='')
     if args.Y:
         print("Option set Y. Automatically rewriting...")
     elif args.N:
@@ -89,19 +86,21 @@ try:
     os.makedirs(dest_dir)
 except OSError:
     pass # Already exists
-path = os.path.join(dest_dir, file_name)
-
 
 ## Global variables
-
 NUM_CLIENTS = 10
 BATCH_SIZE = 64
 #R= 1                            # #missclassification
 NUM_CLASSES= 10                 #for fashionMNIST #classes= 10
 NUM_FL_ROUNDS= 40
 NUM_TRAIN_EPOCH= 5
-MAL_CLIENTS_INDICES= [3] #[3,5,8]      #allowed values: [0 to NUM_CLIENTS-1]
-POISONING_ALGO=2                #allowed values: [0, 1, 2]
+if R == 0:
+    print("R is {R}. So no attacks")
+    MAL_CLIENTS_INDICES = []
+    POISONING_ALGO = 0
+else:
+    MAL_CLIENTS_INDICES= [3] #[3,5,8]      #allowed values: [0 to NUM_CLIENTS-1]
+    POISONING_ALGO=2                #allowed values: [0, 1, 2]
 
 def load_datasets():
     # Define the transformation to Fashion MNIST
@@ -293,6 +292,9 @@ class Custom_FedAvg(fl.server.strategy.FedAvg):
         for client_id, weights in zip(client_ids, weights_results):
             cid_weights_dict[client_id] = weights
 
+        # Save weights
+        save_weights(cid_weights_dict, dest_dir, server_round)
+         
         parameters_aggregated = ndarrays_to_parameters(aggregate(weights_results))
 
         # Aggregate custom metrics if aggregation fn was provided
