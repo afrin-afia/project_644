@@ -40,8 +40,11 @@ def mal_agents_update_statistics(metrics, kappa=2, server_round=-1, save_params=
             print("Total params", params_cli.shape)
         WL.append(params_cli)
 
-    mal_unordered = weight_update_statistics(WL, kappa =kappa, debug=debug)
-    mal_agents = mal_unordered[client_order]
+    mal_unordered = weight_update_statistics(WL, kappa =kappa, debug=debug, fix=fix)
+    
+    mal_agents = np.zeros(len(mal_unordered))
+    for i, order in enumerate(client_order):
+        mal_agents[order] = mal_unordered[i] 
 
     if debug: print(f"Unordered: {mal_unordered} \nOrdered: {mal_agents}")
     return mal_agents
