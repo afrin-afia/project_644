@@ -109,7 +109,7 @@ def draw_f1_vs_threshold (dict_l_f1):
     #ax1 = fig1.add_subplot(1,1,1)
     
     for rvalue, list_f1 in dict_l_f1.items():
-        plt.plot(thresholds, list_f1, label= f'R={rvalue}')
+        plt.plot(thresholds, list_f1, label= f'R={str(int(rvalue))}')
     
     plt.xlabel('Thresholds', fontsize=14)
     plt.ylabel('F1 score', fontsize=14)
@@ -256,16 +256,16 @@ def plot_accu_vs_rounds():
         
     
 #save_results_mal_agents_with_saved_parameters()        #run this once to save the detection results  
-#dict_of_l_f1, dict_of_l_TPR, dict_of_l_FPR, dict_of_l_precision= wrapper_for_plots()
+dict_of_l_f1, dict_of_l_TPR, dict_of_l_FPR, dict_of_l_precision= wrapper_for_plots()
 
 ##draw thershold vs F1 score plot
-#draw_f1_vs_threshold(dict_of_l_f1)
+draw_f1_vs_threshold(dict_of_l_f1)
 
 ##draw roc
 #draw_roc_curve(dict_of_l_TPR, dict_of_l_FPR, dict_of_l_precision)
 
 #draw accu vs rounds curve
-plot_accu_vs_rounds()
+#plot_accu_vs_rounds()
 
 
 
