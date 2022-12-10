@@ -297,7 +297,7 @@ def unbal_split(D, lengths, generator=default_generator, shuffle=True, train=Tru
     return [Subset(D, Ii) for Ii in Ic]
 
 
-def weight_update_statistics(WL, kappa=2, fix = True, debug = False):
+def weight_update_statistics(WL, kappa=2, fix = True, debug = False, cosine=False):
     '''
     - WL: List of weigths to be compared. Python list with numpy arrays as elements.
     - kappa: Parameter for the weight detection algo
@@ -312,7 +312,10 @@ def weight_update_statistics(WL, kappa=2, fix = True, debug = False):
             if i == j:
                 dist_matrix[i,j] = np.NaN
             else:
-                dist_matrix[i,j] = dist_matrix[j,i] = np.linalg.norm(WL[i] - WL[j])
+                if cosine:
+                    dist_matrix[i,j] = dist_matrix[j,i] = 1 - np.dot(WL[i], WL[j]) / (np.linalg.norm(WL[i])*np.linalg.norm(WL[j]))
+                else:
+                    dist_matrix[i,j] = dist_matrix[j,i] = np.linalg.norm(WL[i] - WL[j])
     
 
     #dist_matrix = np.array([[np.nan, 0.5, 1.5, 6.0], 

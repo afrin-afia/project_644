@@ -52,16 +52,27 @@ parser.add_argument("-R", "--NumMal", help = "Number of malicious clients", type
 parser.add_argument("-d", "--Directory", help = "[OPTIONAL] Directory inside ../outputs/. Defauilt is Results_r{R:05d}")
 parser.add_argument("-Y", help = "Automatically YES rewrite", action = "store_true")
 parser.add_argument("-N", help = "Automatically NO rewrite", action = "store_true")
+parser.add_argument("-P", "--DomProp", type=float, help="Dominant proportion of the majority class in each client")
 
 args = parser.parse_args()
 
 # R 
 if args.NumMal is not None:
     R = args.NumMal
+# Dom props
+if args.DomProp is not None:
+    DOM_PROP = args.DomProp
+    print(f"Will partition with {DOM_PROP=}")
+else:
+    DOM_PROP = None
+    print("No domprop")
 
 ## Directories
 if args.Directory:
     results_dir = args.Directory
+elif DOM_PROP is not None:
+    str_dom_prop = f"{DOM_PROP:.2f}".replace(".", "-")
+    results_dir = f"Results_r{R:05d}_prop{str_dom_prop}"
 else:
     results_dir = f"Results_r{R:05d}"
 
@@ -127,8 +138,12 @@ def load_datasets():
     partition_size = len(training_data) // NUM_CLIENTS
     lengths = [partition_size] * NUM_CLIENTS
 
-    # datasets = unbal_split(training_data, lengths, p=0.6, generator=torch.Generator().manual_seed(42))
-    datasets = random_split(training_data, lengths, generator=torch.Generator().manual_seed(42))
+    if DOM_PROP is not None:
+        print(f"Splitting with {DOM_PROP=}")
+        datasets = unbal_split(training_data, lengths, p=DOM_PROP, generator=torch.Generator().manual_seed(42))
+    else:
+        print(f"Splittin evenly")
+        datasets = random_split(training_data, lengths, generator=torch.Generator().manual_seed(42))
 
     # Split each partition into train.val and create DataLoader
     train_loaders = []
