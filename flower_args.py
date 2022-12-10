@@ -170,6 +170,7 @@ def load_datasets():
     portion1, portion2= random_split(test_data, lengths, generator=torch.Generator().manual_seed(42))
     val_data_server_loader= DataLoader(portion2, batch_size=BATCH_SIZE)
 
+    #torch.save(val_data_server_loader,"val_data_for_server.pkl")
     return train_loaders, val_loaders, test_loader, val_data_server_loader
 
 # Get the data loaders
