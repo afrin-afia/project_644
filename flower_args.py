@@ -220,12 +220,16 @@ class FlowerClient(fl.client.NumPyClient):
         return get_parameters(self.net)
     
     def fit(self, parameters, config):
+        prev_params= get_parameters(self.net)
+
         set_parameters(self.net, parameters)
         if(int(self.cid) in MAL_CLIENTS_INDICES):
             if(POISONING_ALGO==1):
                 train(self.cid, self.net, self.train_loader, epochs=NUM_TRAIN_EPOCH)
-                boosted_params= get_parameters(self.net)
-                boosted_params= [element * NUM_CLIENTS for element in boosted_params]
+                cur_params= get_parameters(self.net)
+                delta= cur_params - prev_params
+                boosted_delta= [element * NUM_CLIENTS for element in delta]
+                boosted_params= prev_params + boosted_delta
                 return boosted_params, len(self.train_loader), {}
             else:       #alternating minimization
                 train(self.cid, self.net, self.train_loader, epochs=NUM_TRAIN_EPOCH*10, global_params= parameters)
