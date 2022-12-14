@@ -49,7 +49,7 @@ NUM_CLASSES= 10                 #for fashionMNIST #classes= 10
 NUM_FL_ROUNDS= 40
 NUM_TRAIN_EPOCH= 5
 MAL_CLIENTS_INDICES= [3] #[3,5,8]      #allowed values: [0 to NUM_CLIENTS-1]
-POISONING_ALGO=2                #allowed values: [0, 1, 2]
+POISONING_ALGO=1                #allowed values: [0, 1, 2]
 
 def load_datasets():
     # Define the transformation to Fashion MNIST
@@ -152,12 +152,20 @@ class FlowerClient(fl.client.NumPyClient):
         return get_parameters(self.net)
     
     def fit(self, parameters, config):
+        prev_params= get_parameters(self.net)
+
         set_parameters(self.net, parameters)
         if(int(self.cid) in MAL_CLIENTS_INDICES):
             if(POISONING_ALGO==1):
                 train(self.cid, self.net, self.train_loader, epochs=NUM_TRAIN_EPOCH)
-                boosted_params= get_parameters(self.net)
-                boosted_params= [element * NUM_CLIENTS for element in boosted_params]
+                cur_params= get_parameters(self.net)
+                delta=[]
+                boosted_params=[]
+                for id in range (0,len(cur_params)):
+                    delta.append(cur_params[id] - prev_params[id])
+                boosted_delta= [element * NUM_CLIENTS for element in delta]
+                for id in range (0,len(prev_params)):
+                    boosted_params.append(prev_params[id] + boosted_delta[id])
                 return boosted_params, len(self.train_loader), {}
             else:       #alternating minimization
                 train(self.cid, self.net, self.train_loader, epochs=NUM_TRAIN_EPOCH*10, global_params= parameters)
@@ -166,6 +174,7 @@ class FlowerClient(fl.client.NumPyClient):
             train(self.cid, self.net, self.train_loader, epochs=NUM_TRAIN_EPOCH)
 
         return get_parameters(self.net), len(self.train_loader), {}
+
 
         
     def evaluate(self, parameters, config):

@@ -1,6 +1,6 @@
-from common import set_parameters, test
+from utils.common import set_parameters, test
 from flwr.server.strategy.aggregate import aggregate
-from mnist_models import modelA
+from utils.mnist_models import modelA
 import numpy as np
 import pickle
 import torch
@@ -251,6 +251,8 @@ def wrapper_for_plots(unbalanced=0):
     dict_of_l_f1= {}
     dict_of_l_precision= {}
 
+    l_thres_mins= []
+    l_thres_max= []         #list of max thresholds for different R values(balanced data) or diff DomProp(unbalanced)
     for results_dict in list_of_results_dicts:
         if(unbalanced ==0 and rvalue_index== 0):
             rvalue_index+= 1
@@ -267,9 +269,14 @@ def wrapper_for_plots(unbalanced=0):
         l_f1 = []
         l_precision= []
 
+        threshold_min= -1
+        threshold_max= -1
+
         for key in results_uni.keys():
             accu = accuracy_score(Y_true, results_uni[key])
             cmtx = confusion_matrix(Y_true, results_uni[key], labels=[True, False])
+            #print(key)
+            #print(cmtx)
             TN = cmtx[0,0]
             FN = cmtx[1,0]
             TP = cmtx[1,1]
@@ -278,26 +285,32 @@ def wrapper_for_plots(unbalanced=0):
             FPR = FP / (FP+TN)
             precision= TP/ (TP+FP)
             F1= 2*TP/(2*TP + FP + FN)
-
+            if(F1>.9 and threshold_min==-1): threshold_min= float(key) 
+            elif(threshold_min != -1 and F1>.9): threshold_max= float(key)
             l_accu.append(accu)
             l_TPR.append(TPR)
             l_FPR.append(FPR) 
             l_f1.append(F1)
             l_precision.append(precision)
 
+        l_thres_mins.append(threshold_min)
+        l_thres_max.append(threshold_max)
         if(unbalanced == 0): 
             key= rvalues[rvalue_index]
             rvalue_index += 1
         else: 
             key= domPropValues[domprop_index]
             domprop_index += 1
-        
+        #print(key)
+        #print(cmtx)
         dict_of_l_accu[key]= l_accu 
         dict_of_l_TPR[key]= l_TPR
         dict_of_l_FPR[key]= l_FPR 
         dict_of_l_f1[key]= l_f1
         dict_of_l_precision[key]= l_precision
 
+    print(l_thres_mins)
+    print(l_thres_max)
     return dict_of_l_f1, dict_of_l_TPR, dict_of_l_FPR, dict_of_l_precision
 
 
@@ -337,7 +350,7 @@ def plot_accu_vs_rounds():
 #plot_accu_vs_rounds()
 
 
-
+#use parameter=1 for unbalanced data, nothing for balanced
 dict_of_l_f1, dict_of_l_TPR, dict_of_l_FPR, dict_of_l_precision= wrapper_for_plots(1)
 draw_f1_vs_threshold(dict_of_l_f1,1)
 draw_roc_curve(dict_of_l_TPR, dict_of_l_FPR, dict_of_l_precision,1)
