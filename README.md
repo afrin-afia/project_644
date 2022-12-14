@@ -1,4 +1,5 @@
-# project_644: Detecting Adversarial Attacks on Federated Learning with Unbalanced Classes
+# Final Project CMPUT 644
+## Detecting Adversarial Attacks on Federated Learning with Unbalanced Classes
 
 ## Intro
 In this project we investigate the resilience of proposed poisoning attacks and detection systems in a variety of adversarial proposed in [1]. Our main contributions, in addition to reproducing the poisoning attacks and corresponding detection strategies are as follows:
